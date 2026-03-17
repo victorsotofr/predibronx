@@ -182,6 +182,14 @@ async def forecast_market(market: MarketInfo, research: MarketResearch) -> Forec
     elif confidence < 5:
         fraction *= 0.5
 
+    # Zero-out: do not bet at all when confidence is too low
+    if confidence < 5 and fraction > 0:
+        logger.info(
+            "Zeroing bet for %s — confidence %d/10 too low (would have been %.6f)",
+            market.id, confidence, fraction,
+        )
+        fraction = 0.0
+
     decision = ForecastDecision(
         market_id=market.id,
         market_title=market.question,

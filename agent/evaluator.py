@@ -7,6 +7,8 @@ import sqlite3
 from dataclasses import dataclass
 from datetime import date
 
+import httpx
+
 import config
 
 logger = logging.getLogger(__name__)
@@ -189,6 +191,80 @@ def compute_running_performance(db_path: str | None = None) -> dict:
         "avg_market_brier": sum(market_briers) / n,
         "total_return": total_return,
     }
+
+GAMMA_MARKET_URL = "https://gamma-api.polymarket.com/markets/{market_id}"
+
+
+async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
+    """Poll Polymarket for unscored markets and evaluate any that have resolved.
+
+    Returns the number of newly scored markets.
+    """
+    path = db_path or str(config.DB_PATH)
+    conn = sqlite3.connect(path)
+    conn.row_factory = sqlite3.Row
+
+    # Find all market IDs with decisions but no outcome yet
+    rows = conn.execute(
+        """
+        SELECT DISTINCT d.market_id
+        FROM decisions d
+        LEFT JOIN outcomes o ON d.market_id = o.market_id
+        WHERE o.market_id IS NULL
+        """
+    ).fetchall()
+    conn.close()
+
+    unresolved_ids = [r["market_id"] for r in rows]
+    if not unresolved_ids:
+        logger.info("No unscored markets to check")
+        return 0
+
+    logger.info("Checking %d unscored markets for resolution...", len(unresolved_ids))
+    newly_scored = 0
+
+    async with httpx.AsyncClient(timeout=30) as client:
+        for market_id in unresolved_ids:
+            try:
+                url = GAMMA_MARKET_URL.format(market_id=market_id)
+                resp = await client.get(url)
+                resp.raise_for_status()
+                data = resp.json()
+
+                # Gamma API: "resolved" is a boolean, "outcome" is "Yes"/"No"
+                if not data.get("resolved", False):
+                    continue
+
+                outcome_str = (data.get("outcome") or "").lower()
+                if outcome_str == "yes":
+                    resolved_yes = True
+                elif outcome_str == "no":
+                    resolved_yes = False
+                else:
+                    logger.warning(
+                        "Market %s resolved but outcome is '%s' — skipping",
+                        market_id, data.get("outcome"),
+                    )
+                    continue
+
+                result = evaluate_resolved_market(market_id, resolved_yes, db_path=path)
+                if result:
+                    newly_scored += 1
+                    logger.info(
+                        "Scored market %s: brier=%.4f return=%.2f%%",
+                        market_id, result.brier_score, result.return_pct * 100,
+                    )
+
+            except httpx.HTTPError as exc:
+                logger.error("Failed to check market %s: %s", market_id, exc)
+            except Exception:
+                logger.exception("Unexpected error checking market %s", market_id)
+
+    logger.info(
+        "Resolution check complete: %d checked, %d newly scored",
+        len(unresolved_ids), newly_scored,
+    )
+    return newly_scored
 
 
 if __name__ == "__main__":

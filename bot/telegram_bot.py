@@ -174,19 +174,71 @@ async def cmd_explain(update: Update, context: ContextTypes.DEFAULT_TYPE) -> Non
 
 
 async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Handle /performance — running metrics."""
-    perf = compute_running_performance()
+    """Handle /performance — running metrics from scored predictions."""
+    import sqlite3
 
-    if perf["total_resolved"] == 0:
-        await update.message.reply_text("No resolved markets yet.")
+    conn = sqlite3.connect(str(config.DB_PATH))
+    conn.row_factory = sqlite3.Row
+
+    # Count scored predictions
+    row = conn.execute(
+        """
+        SELECT COUNT(*) as n,
+               AVG((d.estimated_prob - (CASE WHEN o.resolved_yes THEN 1.0 ELSE 0.0 END))
+                   * (d.estimated_prob - (CASE WHEN o.resolved_yes THEN 1.0 ELSE 0.0 END))) as avg_brier,
+               AVG((d.market_price - (CASE WHEN o.resolved_yes THEN 1.0 ELSE 0.0 END))
+                   * (d.market_price - (CASE WHEN o.resolved_yes THEN 1.0 ELSE 0.0 END))) as avg_market_brier
+        FROM decisions d
+        JOIN outcomes o ON d.market_id = o.market_id
+        WHERE o.resolved_yes IS NOT NULL
+        """
+    ).fetchone()
+
+    n = row["n"] or 0
+    if n == 0:
+        await update.message.reply_text("No resolved markets scored yet.")
+        conn.close()
         return
 
+    avg_brier = row["avg_brier"]
+    avg_market_brier = row["avg_market_brier"]
+    random_baseline = 0.25  # Brier score of always predicting 0.5
+
+    # Compute cumulative return
+    returns_row = conn.execute(
+        """
+        SELECT d.bet_direction, d.bet_fraction, d.market_price, o.resolved_yes
+        FROM decisions d
+        JOIN outcomes o ON d.market_id = o.market_id
+        WHERE o.resolved_yes IS NOT NULL
+        """
+    ).fetchall()
+    conn.close()
+
+    cumulative_return = 0.0
+    for r in returns_row:
+        direction = r["bet_direction"]
+        fraction = r["bet_fraction"]
+        price = r["market_price"] if direction == "YES" else 1.0 - r["market_price"]
+        won = (r["resolved_yes"] and direction == "YES") or (not r["resolved_yes"] and direction == "NO")
+        if fraction > 0 and 0 < price < 1:
+            cumulative_return += fraction * ((1.0 - price) / price) if won else -fraction
+
+    # Verdict
+    if avg_brier < avg_market_brier:
+        verdict = "✅ Beating the market"
+    elif avg_brier < random_baseline:
+        verdict = "⚠️ Better than random, worse than market"
+    else:
+        verdict = "❌ Worse than random"
+
     text = (
-        f"*Performance ({perf['total_resolved']} resolved)*\n\n"
-        f"Avg Brier Score: {perf['avg_brier']:.4f}\n"
-        f"  Random baseline: {perf['avg_random_brier']:.4f}\n"
-        f"  Market baseline: {perf['avg_market_brier']:.4f}\n\n"
-        f"Total Return: {perf['total_return']:.2%}\n"
+        f"*Performance ({n} scored)*\n\n"
+        f"Avg Brier: {avg_brier:.4f}\n"
+        f"  vs Random (0.5): {random_baseline:.4f}\n"
+        f"  vs Market: {avg_market_brier:.4f}\n\n"
+        f"Cumulative Return: {cumulative_return:.2%}\n\n"
+        f"{verdict}"
     )
     await update.message.reply_text(text, parse_mode="Markdown")
 

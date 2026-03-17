@@ -143,6 +143,13 @@ async def fetch_top_markets(
                 # Filter: not crypto
                 if _is_crypto(m):
                     continue
+                # Filter: near-resolved markets (price too extreme)
+                if m.yes_price < 0.03 or m.yes_price > 0.97:
+                    continue
+                # Filter: expiring too soon (< 3 days)
+                days_left = (end - date.today()).days
+                if days_left < 3:
+                    continue
                 all_markets.append(m)
 
             # Stop early once we have enough candidates or hit end of results

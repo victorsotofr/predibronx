@@ -11,6 +11,7 @@ from telegram.ext import Application
 
 import config
 from agent.executor import execute_decisions, log_markets
+from agent.evaluator import check_and_score_resolved_markets
 from agent.forecaster import forecast_all
 from agent.market_selector import fetch_top_markets
 from agent.researcher import research_markets
@@ -98,8 +99,33 @@ def create_scheduler(app: Application) -> AsyncIOScheduler:
         replace_existing=True,
     )
 
+    # Resolution check — runs daily at 09:00 ET (1h after main pipeline)
+    resolution_trigger = CronTrigger(
+        hour=9,
+        minute=0,
+        timezone=config.TIMEZONE,
+    )
+
+    async def _run_resolution_check() -> None:
+        """Wrapper to run resolution check and notify via Telegram."""
+        newly_scored = await check_and_score_resolved_markets()
+        if newly_scored > 0:
+            await app.bot.send_message(
+                chat_id=config.TELEGRAM_CHAT_ID,
+                text=f"🎯 Resolution check: {newly_scored} market(s) newly scored."
+                     f" Use /performance to see updated stats.",
+            )
+
+    scheduler.add_job(
+        _run_resolution_check,
+        trigger=resolution_trigger,
+        id="resolution_check",
+        name="Daily resolution check",
+        replace_existing=True,
+    )
+
     logger.info(
-        "Scheduler configured: daily at %02d:%02d %s",
+        "Scheduler configured: pipeline at %02d:%02d, resolution check at 09:00 %s",
         config.DAILY_RUN_HOUR,
         config.DAILY_RUN_MINUTE,
         config.TIMEZONE,
