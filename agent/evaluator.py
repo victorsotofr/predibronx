@@ -231,8 +231,27 @@ async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
                 resp.raise_for_status()
                 data = resp.json()
 
-                # Gamma API: "resolved" is a boolean, "outcome" is "Yes"/"No"
-                if not data.get("resolved", False):
+                # DEBUG: log raw API fields for diagnosis
+                logger.info(
+                    "DEBUG market %s: resolved=%s, outcome=%s, closed=%s, "
+                    "endDate=%s, resolutionSource=%s",
+                    market_id,
+                    data.get("resolved"),
+                    data.get("outcome"),
+                    data.get("closed"),
+                    data.get("endDate"),
+                    data.get("resolutionSource", "(none)"),
+                )
+
+                # Gamma API: "resolved" is tri-state (None / True / False),
+                # "outcome" is "Yes"/"No" when resolved.
+                if data.get("resolved") is not True:
+                    if data.get("closed"):
+                        logger.warning(
+                            "Market %s is closed but not yet resolved by Polymarket "
+                            "— will recheck tomorrow",
+                            market_id,
+                        )
                     continue
 
                 outcome_str = (data.get("outcome") or "").lower()
