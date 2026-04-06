@@ -1,6 +1,10 @@
 # PrediBronx
 
-AI-powered prediction trading system for [Polymarket](https://polymarket.com). PrediBronx runs a fully automated daily pipeline that selects markets, researches them with live web data, generates probability estimates using Claude, sizes bets with the Kelly criterion, and delivers everything to a Telegram bot — with optional live execution on the Polymarket CLOB.
+A personal AI-powered prediction trading bot for [Polymarket](https://polymarket.com).
+
+PrediBronx runs a fully automated daily pipeline: it selects markets, researches them with live web data, generates calibrated probability estimates using Claude, sizes bets with the Kelly criterion, and delivers results to a Telegram bot — with a live web dashboard and optional execution on the Polymarket CLOB.
+
+Inspired by [PrediBench](https://github.com/PresageLabs/PrediBench), an open-source benchmark that measures LLM forecasting ability on real-world prediction markets.
 
 ---
 
@@ -10,48 +14,66 @@ AI-powered prediction trading system for [Polymarket](https://polymarket.com). P
 Polymarket Gamma API
         │
         ▼
- Market Selector        ← filters active, non-crypto markets resolving within 60 days
+ Market Selector        ← top markets by volume, non-crypto, resolving within 60 days
         │
         ▼
    Researcher           ← LinkUp deep search (last 48h) for each market
         │
         ▼
-   Forecaster           ← Claude superforecaster estimates TRUE probability
+   Forecaster           ← Claude superforecaster estimates true probability + confidence
         │
         ▼
-   Bet Sizer            ← Quarter-Kelly criterion, confidence-scaled
+   Bet Sizer            ← Quarter-Kelly criterion, confidence-gated (no bet if conf < 5/10)
         │
         ▼
-   Executor / DB        ← SQLite log of decisions + paper/live execution
+   Executor / DB        ← SQLite log + paper/live execution
         │
         ▼
   Telegram Bot          ← daily summary, per-trade approvals, /performance
         │
         ▼
+ Dashboard (Vercel)     ← live UI: picks, P&L per bet, Brier scores
+        │
+        ▼
    Evaluator            ← Brier scores & returns once markets resolve
 ```
 
-The pipeline runs once a day at a configurable time (default 08:00 ET). A second daily job checks Polymarket for newly resolved markets and scores them automatically.
+The pipeline runs daily at a configurable time (default 08:00 ET). A second job checks Polymarket for newly resolved markets and scores them automatically.
 
 ---
 
-## Features
+## Key design choices
 
-- **Market selection** — fetches top markets by volume, excludes crypto, filters by time-to-resolution
-- **Live research** — LinkUp deep search supplies up-to-date context for each market question
-- **Resolution-source verification** — Claude is instructed to verify predictions against the market's official resolution source; low-confidence estimates are zero-sized
-- **Probability forecasting** — Claude acts as a superforecaster, returning a calibrated YES probability + confidence score
-- **Kelly bet sizing** — quarter-Kelly fraction, capped at 10% per market, zeroed when confidence < 5/10
-- **Paper / Live trading modes** — paper mode logs decisions only; live mode routes approved trades to the Polymarket CLOB API
-- **Telegram bot** — interactive control panel with real-time alerts and trade approval buttons
-- **Performance tracking** — Brier scores compared against random and market-price baselines, cumulative return
+- **Confidence gating** — bets are zeroed when Claude's confidence < 5/10, avoiding low-conviction noise trades (unlike fixed-stake benchmarks)
+- **Resolution-source verification** — Claude is explicitly instructed to verify predictions against the market's official data source (BLS, FIFA, AP News, etc.) and reduce confidence if it cannot; this prevents acting on media misreporting
+- **Quarter-Kelly sizing** — bet fractions are computed from the Kelly criterion and multiplied by 0.25 for conservatism, capped at 10% per market
+- **Brier scoring** — every resolved market is scored against a random baseline (always predict 0.5) and a market-price baseline; this follows the methodology from PrediBench
+
+### What PrediBench taught us
+
+PrediBench's most actionable finding: **research depth drives performance**. Models that visited more webpages (Perplexity Sonar Deep Research: 16+ pages) significantly outperformed models that only read search snippets. PrediBronx currently uses a single LinkUp search per market — the main lever for improvement is moving toward multi-step agentic research (search → fetch → synthesize multiple sources).
+
+---
+
+## Stack
+
+| Layer | Technology |
+|---|---|
+| Bot runtime | Python 3.11+, APScheduler, python-telegram-bot |
+| AI forecasting | Anthropic Claude (`claude-sonnet-4-6`) |
+| Research | LinkUp deep search API |
+| Market data | Polymarket Gamma API |
+| Storage | SQLite (decisions, outcomes, performance) |
+| Infrastructure | GCP Compute Engine (e2-micro), systemd |
+| Dashboard | Vite + React, Vercel |
+| Dashboard API | FastAPI (uvicorn), GCP firewall port 8080 |
 
 ---
 
 ## Prerequisites
 
-- Python ≥ 3.11
-- A [Telegram bot token](https://core.telegram.org/bots#botfather) and a chat/channel ID
+- Python ≥ 3.11 with [uv](https://github.com/astral-sh/uv)
+- A [Telegram bot token](https://core.telegram.org/bots#botfather) and chat ID
 - An [Anthropic API key](https://console.anthropic.com/)
 - A [LinkUp API key](https://linkup.so/)
 - *(Live mode only)* Polymarket API key and a Polygon wallet private key
@@ -61,17 +83,16 @@ The pipeline runs once a day at a configurable time (default 08:00 ET). A second
 ## Installation
 
 ```bash
-git clone https://github.com/your-org/predibronx.git
+git clone <your-repo>
 cd predibronx
-python -m venv .venv && source .venv/bin/activate
-pip install -e .
+uv sync
 ```
 
 ---
 
 ## Configuration
 
-Copy the example below into a `.env` file at the project root:
+Create a `.env` file at the project root:
 
 ```env
 # Required
@@ -80,25 +101,28 @@ LINKUP_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 
-# Live trading (optional — defaults to paper mode)
+# Optional — live trading (defaults to paper mode)
 LIVE_TRADING=false
 POLYMARKET_API_KEY=
 POLYGON_WALLET_PRIVATE_KEY=
 
-# Scheduling (optional)
+# Optional — scheduling
 DAILY_RUN_HOUR=8
 DAILY_RUN_MINUTE=0
 TIMEZONE=America/New_York
+
+# Optional — dashboard link included in Telegram summaries
+DASHBOARD_URL=https://your-dashboard.vercel.app
 ```
 
-All risk and market-selection parameters can be tuned directly in `config.py`:
+Tunable parameters in `config.py`:
 
 | Parameter | Default | Description |
 |---|---|---|
-| `MAX_BET_FRACTION` | 0.10 | Max fraction of per-market budget on a single bet |
-| `DAILY_LOSS_LIMIT` | 0.02 | Max daily portfolio drawdown before pausing |
+| `MAX_BET_FRACTION` | 0.10 | Max stake per market (fraction of budget) |
+| `DAILY_LOSS_LIMIT` | 0.02 | Daily drawdown limit before pausing |
 | `KELLY_FRACTION` | 0.25 | Kelly multiplier (quarter-Kelly) |
-| `TOP_MARKETS` | 10 | Number of markets evaluated per daily run |
+| `TOP_MARKETS` | 10 | Markets evaluated per daily run |
 | `MAX_END_DAYS` | 60 | Only consider markets resolving within this window |
 
 ---
@@ -106,14 +130,41 @@ All risk and market-selection parameters can be tuned directly in `config.py`:
 ## Running
 
 ```bash
-# Start the bot (polls Telegram, runs scheduler in background)
-python main.py
+# Start bot + scheduler (polls Telegram, runs at configured time)
+uv run python main.py
 
-# Trigger the full pipeline immediately on startup
-python main.py --run-now
+# Trigger full pipeline immediately on startup
+uv run python main.py --run-now
 ```
 
-The SQLite database is created automatically at `db/predibronx.db` on first run.
+The SQLite database is created automatically at `db/predibronx.db`.
+
+---
+
+## GCP deployment (production)
+
+The bot runs as two systemd services on a GCP e2-micro VM:
+
+```
+predibronx-bot.service   ← main pipeline + Telegram polling
+predibronx-api.service   ← FastAPI dashboard API on :8080
+```
+
+Both are set to `Restart=always` and `WantedBy=multi-user.target`.
+
+The dashboard is deployed to Vercel from the `dashboard/` subdirectory, with `PREDIBRONX_API_URL=http://<VM_IP>:8080` set as a server-side environment variable.
+
+---
+
+## Dashboard
+
+Deploy the `dashboard/` directory to Vercel:
+
+1. New Project → import repo → set **Root Directory** to `dashboard`
+2. Set environment variable: `PREDIBRONX_API_URL=http://<VM_IP>:8080`
+3. Deploy
+
+The dashboard proxies API calls server-side (Vercel → VM) to avoid mixed-content browser issues.
 
 ---
 
@@ -122,14 +173,14 @@ The SQLite database is created automatically at `db/predibronx.db` on first run.
 | Command | Description |
 |---|---|
 | `/start` | Show available commands |
-| `/status` | Mode, last run, and performance summary |
+| `/status` | Mode, last run, performance summary |
 | `/markets` | Today's picks with edge and rationale |
 | `/explain <market_id>` | Full reasoning for a specific market |
 | `/performance` | Brier scores and cumulative return vs baselines |
 | `/pause` | Pause the daily scheduler |
 | `/resume` | Resume the daily scheduler |
 
-In live mode, each trade with a non-zero bet fraction triggers an inline approval button before execution.
+In live mode, each trade triggers an inline approval button before execution.
 
 ---
 
@@ -143,30 +194,30 @@ predibronx/
 │   ├── market_selector.py # Polymarket Gamma API wrapper + filtering
 │   ├── researcher.py      # LinkUp deep search + resolution-source extraction
 │   ├── forecaster.py      # Claude superforecaster + Kelly sizing
-│   ├── executor.py        # SQLite persistence + (future) CLOB execution
+│   ├── executor.py        # SQLite persistence + CLOB execution
 │   └── evaluator.py       # Brier scoring + return calculation
 ├── bot/
 │   ├── telegram_bot.py    # Command handlers + approval flow
 │   └── scheduler.py       # APScheduler daily jobs
+├── api/
+│   └── server.py          # FastAPI dashboard API
+├── dashboard/             # Vite + React web dashboard (deploy to Vercel)
 └── db/
     └── predibronx.db      # Auto-created SQLite database
 ```
 
 ---
 
-## Dependencies
+## Performance metrics
 
-| Package | Purpose |
-|---|---|
-| `anthropic` | Claude API client (forecaster) |
-| `httpx` | Async HTTP (Polymarket + LinkUp APIs) |
-| `python-telegram-bot` | Telegram bot framework |
-| `apscheduler` | Cron-style daily job scheduling |
-| `pydantic` | Data models and validation |
-| `python-dotenv` | `.env` file loading |
+Following [PrediBench](https://github.com/PresageLabs/PrediBench) methodology:
+
+- **Brier score** — mean squared error between estimated probability and binary outcome; lower is better; baselines: random (always 0.5) and market price
+- **Cumulative return** — paper P&L computed from bet direction, fraction, and market price at decision time
+- **Win rate** — fraction of resolved bets where direction was correct
 
 ---
 
 ## Disclaimer
 
-This project is experimental. Past prediction performance does not guarantee future results. Use paper mode until you have validated the system's edge. Never risk capital you cannot afford to lose.
+This project is experimental and for personal use. Past prediction performance does not guarantee future results. Use paper mode until you have validated the system's edge. Never risk capital you cannot afford to lose.

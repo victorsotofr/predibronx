@@ -12,3 +12,17 @@ wheels/
 # Secrets
 .env
 .env.*
+
+# Logs
+*.log
+
+# Database (local copy — live DB lives on the VM)
+db/predibronx.db
+
+# Dashboard build artifacts
+dashboard/dist/
+dashboard/node_modules/
+dashboard/.vercel/
+
+# Reference repos (not part of this project)
+reference_repos/
