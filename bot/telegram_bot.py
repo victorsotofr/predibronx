@@ -281,7 +281,10 @@ def format_daily_summary(decisions: list[ForecastDecision]) -> str:
             f"(edge: {edge:+.1%}) | Conf: {d.confidence}/10\n"
         )
 
-    lines.append(f"\n_All {len(decisions)} decisions logged (PAPER mode)_")
+    mode_label = "LIVE" if config.LIVE_TRADING else "PAPER"
+    lines.append(f"\n_All {len(decisions)} decisions logged ({mode_label} mode)_")
+    if config.DASHBOARD_URL:
+        lines.append(f"[View dashboard]({config.DASHBOARD_URL})")
     return "\n".join(lines)
 
 

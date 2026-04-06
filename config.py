@@ -38,4 +38,7 @@ DAILY_RUN_MINUTE: int = int(os.environ.get("DAILY_RUN_MINUTE", "0"))
 TIMEZONE: str = os.environ.get("TIMEZONE", "America/New_York")
 
 # ── Claude Model ─────────────────────────────────────────────────────────────
-CLAUDE_MODEL: str = "claude-sonnet-4-20250514"
+CLAUDE_MODEL: str = "claude-sonnet-4-6"
+
+# ── Dashboard ─────────────────────────────────────────────────────────────────
+DASHBOARD_URL: str = os.environ.get("DASHBOARD_URL", "")
