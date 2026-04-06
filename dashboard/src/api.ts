@@ -1,4 +1,4 @@
-const BASE = import.meta.env.VITE_API_URL ?? "http://localhost:8080";
+const BASE = "/api";
 
 async function get<T>(path: string, params?: string): Promise<T> {
   const url = `${BASE}/${path}${params ? `?${params}` : ""}`;
