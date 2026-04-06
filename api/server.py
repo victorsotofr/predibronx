@@ -112,9 +112,25 @@ def get_decisions(run_date: str | None = Query(default=None)):
     result = []
     for r in rows:
         d = dict(r)
-        # Compute signed edge (positive = betting in the right direction)
         raw_edge = d["estimated_prob"] - d["market_price"]
         d["edge"] = raw_edge if d["bet_direction"] == "YES" else -raw_edge
+
+        # P&L and outcome for resolved markets
+        if d["resolved_yes"] is not None:
+            direction = d["bet_direction"]
+            fraction = d["bet_fraction"]
+            price = d["market_price"] if direction == "YES" else 1.0 - d["market_price"]
+            resolved = bool(d["resolved_yes"])
+            won = (resolved and direction == "YES") or (not resolved and direction == "NO")
+            d["won"] = won
+            if fraction > 0 and 0 < price < 1:
+                d["pnl"] = fraction * (1.0 - price) / price if won else -fraction
+            else:
+                d["pnl"] = 0.0
+        else:
+            d["won"] = None
+            d["pnl"] = None
+
         result.append(d)
     return result
 

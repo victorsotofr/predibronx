@@ -1,101 +1,87 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, Fragment } from "react";
 import { api, Health, RunSummary, Decision, Performance, Logs } from "./api";
 import "./App.css";
 
-// ── helpers ──────────────────────────────────────────────────────────────────
+// ── Helpers ───────────────────────────────────────────────────────────────
 
-function pct(v: number) {
-  return `${(v * 100).toFixed(1)}%`;
-}
+const pct = (v: number, decimals = 1) =>
+  `${(v * 100).toFixed(decimals)}%`;
 
-function signedPct(v: number) {
-  return `${v >= 0 ? "+" : ""}${(v * 100).toFixed(1)}%`;
-}
+const signedPct = (v: number, decimals = 1) =>
+  `${v >= 0 ? "+" : ""}${(v * 100).toFixed(decimals)}%`;
 
-// ── StatusBar ─────────────────────────────────────────────────────────────────
+// ── StatusPill ────────────────────────────────────────────────────────────
 
-function StatusBar({ health }: { health: Health | null }) {
-  if (!health) {
-    return <div className="badge badge-red">● API unreachable</div>;
-  }
-  const daysSince = health.last_run
+function StatusPill({ health }: { health: Health | null }) {
+  if (!health)
+    return <div className="status-pill error"><span className="status-dot" />API unreachable</div>;
+
+  const days = health.last_run
     ? Math.floor((Date.now() - new Date(health.last_run).getTime()) / 86_400_000)
     : null;
-  const stale = daysSince !== null && daysSince > 1;
+  const stale = days !== null && days > 1;
+
   return (
-    <div className={`badge ${stale ? "badge-yellow" : "badge-green"}`}>
-      <span className={`dot ${stale ? "" : "pulse"}`} />
-      {stale
-        ? `Stale — last run ${daysSince}d ago`
-        : `Live — last run ${health.last_run}`}
+    <div className={`status-pill ${stale ? "stale" : "live"}`}>
+      <span className={`status-dot ${stale ? "" : "pulse"}`} />
+      {stale ? `Stale — last run ${days}d ago` : `Live — last run ${health.last_run}`}
     </div>
   );
 }
 
-// ── PerformanceStrip ──────────────────────────────────────────────────────────
+// ── StatsBar ──────────────────────────────────────────────────────────────
 
-function PerformanceStrip({ data }: { data: Performance | null }) {
-  if (!data) return null;
+function StatsBar({ data }: { data: Performance | null }) {
+  if (!data) return <div className="stats-bar" />;
+
+  const returnColor =
+    data.cumulative_return > 0 ? "green" : data.cumulative_return < 0 ? "red" : "";
+
   const verdictLabel =
-    data.verdict === "beating_market"
-      ? "✓ Beating the market"
-      : data.verdict === "better_than_random"
-      ? "⚠ Better than random"
-      : data.verdict === "worse_than_random"
-      ? "✗ Worse than random"
-      : null;
-  const verdictColor =
-    data.verdict === "beating_market"
-      ? "#22c55e"
-      : data.verdict === "better_than_random"
-      ? "#facc15"
-      : "#ef4444";
+    data.verdict === "beating_market" ? "↑ Beating market" :
+    data.verdict === "better_than_random" ? "~ Better than random" :
+    data.verdict === "worse_than_random" ? "↓ Worse than random" : null;
+
+  const verdictClass =
+    data.verdict === "beating_market" ? "good" :
+    data.verdict === "better_than_random" ? "mid" : "bad";
 
   return (
-    <div className="card perf-strip">
-      <div className="stat">
+    <div className="stats-bar">
+      <div className="stat-cell">
         <span className="stat-label">Total runs</span>
         <span className="stat-value">{data.total_runs}</span>
         <span className="stat-sub">{data.total_resolved} resolved</span>
       </div>
-      {data.avg_brier !== null ? (
-        <>
-          <div className="stat">
-            <span className="stat-label">Avg Brier</span>
-            <span className="stat-value">{data.avg_brier.toFixed(4)}</span>
-            <span className="stat-sub">
-              Market {data.avg_market_brier?.toFixed(4)} · Random {data.random_baseline}
-            </span>
-          </div>
-          <div className="stat">
-            <span className="stat-label">Cumulative return</span>
-            <span
-              className="stat-value"
-              style={{ color: data.cumulative_return >= 0 ? "#22c55e" : "#ef4444" }}
-            >
-              {signedPct(data.cumulative_return)}
-            </span>
-          </div>
-          {verdictLabel && (
-            <div className="stat" style={{ marginLeft: "auto" }}>
-              <span className="stat-value" style={{ color: verdictColor, fontSize: 13 }}>
-                {verdictLabel}
-              </span>
-            </div>
-          )}
-        </>
-      ) : (
-        <span className="muted" style={{ alignSelf: "center" }}>
-          No resolved markets yet — performance will appear once markets close.
+      <div className="stat-cell">
+        <span className="stat-label">Avg Brier score</span>
+        <span className={`stat-value ${data.avg_brier !== null && data.avg_market_brier !== null && data.avg_brier < data.avg_market_brier ? "green" : ""}`}>
+          {data.avg_brier?.toFixed(4) ?? "—"}
         </span>
+        <span className="stat-sub">
+          Market {data.avg_market_brier?.toFixed(4)} · Random {data.random_baseline}
+        </span>
+      </div>
+      <div className="stat-cell">
+        <span className="stat-label">Paper return</span>
+        <span className={`stat-value ${returnColor}`}>
+          {signedPct(data.cumulative_return)}
+        </span>
+        <span className="stat-sub">since inception</span>
+      </div>
+      {verdictLabel && (
+        <div className="stat-cell">
+          <span className="stat-label">Verdict</span>
+          <span className={`verdict-badge ${verdictClass}`}>{verdictLabel}</span>
+        </div>
       )}
     </div>
   );
 }
 
-// ── RunsPanel ─────────────────────────────────────────────────────────────────
+// ── Sidebar ───────────────────────────────────────────────────────────────
 
-function RunsPanel({
+function Sidebar({
   runs,
   selected,
   onSelect,
@@ -105,132 +91,167 @@ function RunsPanel({
   onSelect: (d: string) => void;
 }) {
   return (
-    <div className="card runs-panel">
-      <div className="panel-header">
-        <span className="panel-title">Run history</span>
-        <span className="muted">{runs.length} days</span>
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <span className="sidebar-title">Run history — {runs.length} days</span>
       </div>
       <ul className="run-list">
-        {runs.length === 0 && <li className="muted center">No runs yet</li>}
+        {runs.length === 0 && (
+          <li style={{ padding: "16px 14px", color: "#C4BDB7", fontSize: 12 }}>No runs yet</li>
+        )}
         {runs.map((r) => (
           <li
             key={r.run_date}
-            className={`run-item ${r.run_date === selected ? "selected" : ""}`}
+            className={`run-item ${r.run_date === selected ? "active" : ""}`}
             onClick={() => onSelect(r.run_date)}
           >
             <div>
               <div className="run-date">{r.run_date}</div>
-              <div className="muted" style={{ fontSize: 11, marginTop: 2 }}>
-                {r.n_decisions} mkts · conf {r.avg_confidence.toFixed(1)}/10
+              <div className="run-meta">
+                {r.n_decisions} mkts · {r.avg_confidence.toFixed(1)}/10 conf
               </div>
             </div>
-            <div style={{ textAlign: "right" }}>
-              <div style={{ color: "var(--accent)", fontFamily: "monospace", fontSize: 11 }}>
-                {pct(r.max_edge)}
-              </div>
-              <div className="muted" style={{ fontSize: 11 }}>max edge</div>
-            </div>
+            <div className="run-edge">{pct(r.max_edge)}</div>
           </li>
         ))}
       </ul>
-    </div>
+    </aside>
   );
 }
 
-// ── DecisionsPanel ────────────────────────────────────────────────────────────
+// ── Decision row ──────────────────────────────────────────────────────────
 
-function ConfDots({ v }: { v: number }) {
+function DecisionRow({ d, i }: { d: Decision; i: number }) {
+  const [open, setOpen] = useState(false);
+  const edgeClass = d.edge > 0.005 ? "pos" : d.edge < -0.005 ? "neg" : "zero";
+
   return (
-    <span className="conf-dots">
-      {Array.from({ length: 10 }, (_, i) => (
-        <span key={i} className={`dot-sm ${i < v ? "active" : ""}`} />
-      ))}
-    </span>
+    <Fragment>
+      <tr onClick={() => setOpen((x) => !x)} style={{ cursor: "pointer" }}>
+        <td className="rank">{i + 1}</td>
+        <td>
+          <div className="market-title">{d.title}</div>
+          <div className="market-end">ends {d.end_date}</div>
+        </td>
+        <td>
+          <div>
+            <span className={`bet-tag ${d.bet_direction === "YES" ? "yes" : "no"}`}>
+              {d.bet_direction}
+            </span>
+          </div>
+          <div className="bet-fraction">{pct(d.bet_fraction, 2)} stake</div>
+        </td>
+        <td>
+          <div className="prices">
+            <span style={{ color: "#78716C" }}>{pct(d.market_price, 1)}</span>
+            <span className="arrow">→</span>
+            <span style={{ fontWeight: 500 }}>{pct(d.estimated_prob, 1)}</span>
+          </div>
+        </td>
+        <td>
+          <span className={`edge-val ${edgeClass}`}>{signedPct(d.edge)}</span>
+        </td>
+        <td>
+          <div className="conf-bar">
+            {Array.from({ length: 10 }, (_, idx) => (
+              <div key={idx} className={`conf-pip ${idx < d.confidence ? "on" : ""}`} />
+            ))}
+          </div>
+          <div style={{ fontSize: 10, color: "#A8A29E", marginTop: 3 }}>{d.confidence}/10</div>
+        </td>
+        <td className="outcome-cell">
+          {d.won === null ? (
+            <span className="outcome-open">Open</span>
+          ) : d.won ? (
+            <span className="outcome-won">✓ Won</span>
+          ) : (
+            <span className="outcome-lost">✗ Lost</span>
+          )}
+        </td>
+        <td className="pnl-cell">
+          {d.pnl === null ? (
+            <span className="pnl-open">—</span>
+          ) : (
+            <span className={d.pnl >= 0 ? "pnl-pos" : "pnl-neg"}>
+              {signedPct(d.pnl, 2)}
+            </span>
+          )}
+        </td>
+      </tr>
+      {open && d.rationale && (
+        <tr className="rationale-row">
+          <td colSpan={8}>{d.rationale}</td>
+        </tr>
+      )}
+    </Fragment>
   );
 }
 
-function DecisionsPanel({ decisions, selectedRun }: { decisions: Decision[]; selectedRun: string | null }) {
+// ── Decisions table ───────────────────────────────────────────────────────
+
+function DecisionsTab({ decisions }: { decisions: Decision[] }) {
+  if (decisions.length === 0)
+    return <div className="empty">No decisions for this run</div>;
+
+  const resolved = decisions.filter((d) => d.won !== null);
+  const won = resolved.filter((d) => d.won).length;
+  const totalPnl = resolved.reduce((s, d) => s + (d.pnl ?? 0), 0);
+
   return (
-    <div className="card decisions-panel">
-      <div className="panel-header">
-        <span className="panel-title">
-          {selectedRun ? `Picks — ${selectedRun}` : "Latest picks"}
-        </span>
-        <span className="muted">{decisions.length} markets · sorted by edge</span>
-      </div>
-      {decisions.length === 0 ? (
-        <div className="muted center" style={{ padding: "2rem" }}>No decisions found</div>
-      ) : (
-        <div className="decision-list">
-          {decisions.map((d, i) => {
-            const edgePos = d.edge >= 0;
-            const outcome =
-              d.resolved_yes === null ? null : d.resolved_yes ? "YES" : "NO";
-            return (
-              <div key={d.market_id} className="decision-item">
-                <span className="rank">{i + 1}</span>
-                <div className="decision-body">
-                  <div className="decision-top">
-                    <span className="decision-title">{d.title}</span>
-                    {outcome !== null && (
-                      <span className={`outcome ${outcome === "YES" ? "yes" : "no"}`}>
-                        {outcome}
-                      </span>
-                    )}
-                  </div>
-                  <div className="decision-meta">
-                    <span className={`direction ${d.bet_direction === "YES" ? "yes" : "no"}`}>
-                      {d.bet_direction}
-                    </span>
-                    <span className="mono muted">
-                      Mkt {pct(d.market_price)} → Est {pct(d.estimated_prob)}
-                    </span>
-                    <span className={`edge-badge ${edgePos ? "pos" : "neg"}`}>
-                      {signedPct(d.edge)}
-                    </span>
-                    <span className="muted">ends {d.end_date}</span>
-                  </div>
-                  <ConfDots v={d.confidence} />
-                  {d.rationale && (
-                    <p className="rationale">{d.rationale}</p>
-                  )}
-                </div>
-              </div>
-            );
-          })}
+    <>
+      {resolved.length > 0 && (
+        <div style={{
+          display: "flex", gap: 20, padding: "8px 12px",
+          background: "#FDFCFB", borderBottom: "1px solid #E8E3DC",
+          fontSize: 11, color: "#78716C", flexShrink: 0,
+        }}>
+          <span>{resolved.length} resolved</span>
+          <span>Win rate: <strong style={{ color: "#1C1917" }}>{((won / resolved.length) * 100).toFixed(0)}%</strong> ({won}/{resolved.length})</span>
+          <span>Run P&L: <strong style={{ color: totalPnl >= 0 ? "#15803D" : "#DC2626" }}>{signedPct(totalPnl, 2)}</strong></span>
         </div>
       )}
-    </div>
+      <div className="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>#</th>
+              <th>Market</th>
+              <th>Bet</th>
+              <th>Mkt → Est</th>
+              <th>Edge</th>
+              <th>Conf</th>
+              <th>Outcome</th>
+              <th>P&L</th>
+            </tr>
+          </thead>
+          <tbody>
+            {decisions.map((d, i) => (
+              <DecisionRow key={d.market_id} d={d} i={i} />
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 
-// ── LogsPanel ─────────────────────────────────────────────────────────────────
+// ── Logs tab ──────────────────────────────────────────────────────────────
 
-function LogsPanel({ logs }: { logs: Logs | null }) {
-  const [open, setOpen] = useState(false);
-  if (!open) {
-    return (
-      <button className="logs-toggle" onClick={() => setOpen(true)}>
-        ▶ Show bot logs {logs ? `(${logs.lines.length} lines)` : ""}
-      </button>
-    );
-  }
+function LogsTab({ logs }: { logs: Logs | null }) {
+  // Filter out noisy HTTP polling lines
+  const lines = (logs?.lines ?? []).filter(
+    (l) => !l.includes("getUpdates") && !l.includes("HTTP Request")
+  );
   return (
-    <div className="card logs-card">
-      <div className="panel-header">
-        <span className="panel-title" style={{ textTransform: "uppercase", fontSize: 11, letterSpacing: "0.05em", color: "var(--muted)" }}>
-          Bot logs
-        </span>
-        <button className="logs-toggle" onClick={() => setOpen(false)}>Hide</button>
-      </div>
-      <pre className="logs-pre">
-        {logs?.lines.length ? logs.lines.join("\n") : "No logs yet."}
+    <div className="logs-wrap">
+      <pre className="logs">
+        {lines.length ? lines.join("\n") : "No logs yet."}
       </pre>
     </div>
   );
 }
 
-// ── App ───────────────────────────────────────────────────────────────────────
+// ── App ───────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -239,9 +260,9 @@ export default function App() {
   const [performance, setPerformance] = useState<Performance | null>(null);
   const [logs, setLogs] = useState<Logs | null>(null);
   const [selectedRun, setSelectedRun] = useState<string | null>(null);
+  const [tab, setTab] = useState<"picks" | "logs">("picks");
   const [loading, setLoading] = useState(true);
 
-  // Initial load
   useEffect(() => {
     Promise.allSettled([
       api.health().then(setHealth),
@@ -254,44 +275,69 @@ export default function App() {
     ]).finally(() => setLoading(false));
   }, []);
 
-  // Load decisions when run changes
   useEffect(() => {
     if (!selectedRun) return;
     api.decisions(selectedRun).then(setDecisions).catch(() => setDecisions([]));
   }, [selectedRun]);
 
-  if (loading) {
-    return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh" }}>
-        <span className="muted">Loading…</span>
-      </div>
-    );
-  }
+  if (loading)
+    return <div className="empty" style={{ height: "100vh" }}>Loading…</div>;
 
   return (
-    <div className="layout">
+    <div className="app">
       {/* Header */}
       <header className="header">
         <div>
-          <h1 className="site-title">PrediBronx</h1>
-          <p className="muted" style={{ marginTop: 2, fontSize: 12 }}>
-            AI-powered Polymarket prediction bot
-          </p>
+          <span className="brand">PrediBronx</span>
+          <span className="brand-sub">Polymarket AI bot</span>
         </div>
-        <StatusBar health={health} />
+        <StatusPill health={health} />
       </header>
 
-      {/* Performance */}
-      <PerformanceStrip data={performance} />
+      {/* Stats bar */}
+      <StatsBar data={performance} />
 
-      {/* Main grid */}
-      <div className="grid">
-        <RunsPanel runs={runs} selected={selectedRun} onSelect={setSelectedRun} />
-        <DecisionsPanel decisions={decisions} selectedRun={selectedRun} />
+      {/* Body */}
+      <div className="body">
+        {/* Sidebar: run history */}
+        <Sidebar runs={runs} selected={selectedRun} onSelect={setSelectedRun} />
+
+        {/* Main content */}
+        <div className="content">
+          <div className="content-header">
+            <div>
+              <span className="content-title">
+                {selectedRun ? `Picks — ${selectedRun}` : "Latest picks"}
+              </span>
+              {decisions.length > 0 && (
+                <span className="content-meta" style={{ marginLeft: 8 }}>
+                  {decisions.length} markets · click row for rationale
+                </span>
+              )}
+            </div>
+            <div className="tabs">
+              <button
+                className={`tab-btn ${tab === "picks" ? "active" : ""}`}
+                onClick={() => setTab("picks")}
+              >
+                Picks
+              </button>
+              <button
+                className={`tab-btn ${tab === "logs" ? "active" : ""}`}
+                onClick={() => setTab("logs")}
+              >
+                Bot logs
+              </button>
+            </div>
+          </div>
+
+          {tab === "picks" ? (
+            <DecisionsTab decisions={decisions} />
+          ) : (
+            <LogsTab logs={logs} />
+          )}
+        </div>
       </div>
-
-      {/* Logs */}
-      <LogsPanel logs={logs} />
     </div>
   );
 }

@@ -37,6 +37,8 @@ export type Decision = {
   edge: number;
   resolved_yes: number | null;
   resolved_at: string | null;
+  won: boolean | null;
+  pnl: number | null;
 };
 
 export type Performance = {
