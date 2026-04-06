@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 import sqlite3
 from dataclasses import dataclass
@@ -231,22 +232,27 @@ async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
                 resp.raise_for_status()
                 data = resp.json()
 
-                # DEBUG: log raw API fields for diagnosis
+                # Gamma API uses umaResolutionStatus + outcomePrices to signal
+                # resolution. The "resolved" boolean field is unreliable (often None).
+                uma_status = data.get("umaResolutionStatus", "")
+                is_closed = data.get("closed", False)
+
+                try:
+                    outcomes = json.loads(data.get("outcomes") or "[]")
+                    prices = [float(p) for p in json.loads(data.get("outcomePrices") or "[]")]
+                except (ValueError, TypeError):
+                    outcomes, prices = [], []
+
+                has_winner = any(p == 1.0 for p in prices)
+                is_resolved = uma_status == "resolved" or (is_closed and has_winner)
+
                 logger.info(
-                    "DEBUG market %s: resolved=%s, outcome=%s, closed=%s, "
-                    "endDate=%s, resolutionSource=%s",
-                    market_id,
-                    data.get("resolved"),
-                    data.get("outcome"),
-                    data.get("closed"),
-                    data.get("endDate"),
-                    data.get("resolutionSource", "(none)"),
+                    "market %s: uma_status=%s, closed=%s, prices=%s → resolved=%s",
+                    market_id, uma_status, is_closed, prices, is_resolved,
                 )
 
-                # Gamma API: "resolved" is tri-state (None / True / False),
-                # "outcome" is "Yes"/"No" when resolved.
-                if data.get("resolved") is not True:
-                    if data.get("closed"):
+                if not is_resolved:
+                    if is_closed:
                         logger.warning(
                             "Market %s is closed but not yet resolved by Polymarket "
                             "— will recheck tomorrow",
@@ -254,7 +260,15 @@ async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
                         )
                     continue
 
-                outcome_str = (data.get("outcome") or "").lower()
+                # Find the winning outcome (price == 1.0)
+                winning_idx = next((i for i, p in enumerate(prices) if p == 1.0), None)
+                if winning_idx is None or winning_idx >= len(outcomes):
+                    logger.warning(
+                        "Market %s resolved but no clear winner in prices %s", market_id, prices
+                    )
+                    continue
+
+                outcome_str = outcomes[winning_idx].lower()
                 if outcome_str == "yes":
                     resolved_yes = True
                 elif outcome_str == "no":
@@ -262,7 +276,7 @@ async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
                 else:
                     logger.warning(
                         "Market %s resolved but outcome is '%s' — skipping",
-                        market_id, data.get("outcome"),
+                        market_id, outcomes[winning_idx],
                     )
                     continue
 
