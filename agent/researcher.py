@@ -101,13 +101,18 @@ def _extract_resolution_source(description: str) -> str:
             if len(source) > 3:  # avoid noise
                 return source
 
-    # 2. Fall back to known source names found verbatim in the description.
-    desc_lower = description.lower()
+    # 2. Fall back to known source names found as standalone names.
     for name in _KNOWN_SOURCES:
-        if name.lower() in desc_lower:
+        if _contains_source_name(description, name):
             return name
 
     return ""
+
+
+def _contains_source_name(text: str, source_name: str) -> bool:
+    """Match source names as standalone words, not substrings."""
+    pattern = re.compile(rf"(?<!\w){re.escape(source_name)}(?!\w)", re.I)
+    return bool(pattern.search(text))
 
 
 def _build_query(market: MarketInfo, resolution_source: str = "") -> str:
@@ -131,7 +136,7 @@ async def research_market(
     lookback_hours: int = 48,
 ) -> MarketResearch:
     """Call LinkUp deep search for a single market and return structured results."""
-    resolution_source = _extract_resolution_source(market.description)
+    resolution_source = market.resolution_source or _extract_resolution_source(market.description)
     if resolution_source:
         logger.info("Detected resolution source '%s' for market %s", resolution_source, market.id)
 
@@ -151,7 +156,7 @@ async def research_market(
 
     items: list[ResearchItem] = []
     try:
-        async with httpx.AsyncClient(timeout=60) as client:
+        async with httpx.AsyncClient(timeout=60, trust_env=False) as client:
             resp = await client.post(LINKUP_SEARCH, json=payload, headers=headers)
             resp.raise_for_status()
             data = resp.json()

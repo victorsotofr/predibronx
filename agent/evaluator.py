@@ -224,7 +224,7 @@ async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
     logger.info("Checking %d unscored markets for resolution...", len(unresolved_ids))
     newly_scored = 0
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
         for market_id in unresolved_ids:
             try:
                 url = GAMMA_MARKET_URL.format(market_id=market_id)

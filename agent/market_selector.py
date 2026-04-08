@@ -24,6 +24,7 @@ class MarketInfo(BaseModel):
     id: str
     question: str
     description: str = ""
+    resolution_source: str = ""
     end_date: str  # ISO-8601
     category: str = ""
     volume: float = 0.0
@@ -75,6 +76,7 @@ def _parse_market(raw: dict[str, Any]) -> MarketInfo | None:
         id=str(raw.get("id", "")),
         question=raw.get("question", ""),
         description=raw.get("description", ""),
+        resolution_source=str(raw.get("resolutionSource", "") or "").strip(),
         end_date=end_dt.date().isoformat(),
         category=raw.get("groupItemTitle", "") or raw.get("category", "") or "",
         volume=float(raw.get("volume", 0) or 0),
@@ -110,7 +112,7 @@ async def fetch_top_markets(
     offset = 0
     limit = 100
 
-    async with httpx.AsyncClient(timeout=30) as client:
+    async with httpx.AsyncClient(timeout=30, trust_env=False) as client:
         while True:
             params: dict[str, Any] = {
                 "active": "true",
