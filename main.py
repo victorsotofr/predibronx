@@ -14,14 +14,22 @@ from agent.executor import _init_db
 from bot.scheduler import create_scheduler, run_daily_pipeline
 from bot.telegram_bot import build_app
 
+
+def _logging_handlers() -> list[logging.Handler]:
+    """Use stdout everywhere and add a file only when writable."""
+    handlers: list[logging.Handler] = [logging.StreamHandler()]
+    try:
+        handlers.append(logging.FileHandler(config.BASE_DIR / "bot.log", encoding="utf-8"))
+    except OSError:
+        pass
+    return handlers
+
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s [%(name)s] %(levelname)s: %(message)s",
     datefmt="%Y-%m-%d %H:%M:%S",
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler(config.BASE_DIR / "bot.log", encoding="utf-8"),
-    ],
+    handlers=_logging_handlers(),
 )
 logger = logging.getLogger("predibronx")
 
