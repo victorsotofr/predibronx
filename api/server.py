@@ -56,7 +56,10 @@ def get_runs():
         SELECT
             d.run_date,
             COUNT(*) as n_decisions,
-            AVG(ABS(d.estimated_prob - d.market_price)) as avg_edge,
+            CASE WHEN SUM(d.bet_fraction) > 0
+                 THEN SUM(ABS(d.estimated_prob - d.market_price) * d.bet_fraction) / SUM(d.bet_fraction)
+                 ELSE AVG(ABS(d.estimated_prob - d.market_price))
+            END as avg_edge,
             AVG(d.confidence) as avg_confidence,
             MAX(ABS(d.estimated_prob - d.market_price)) as max_edge
         FROM decisions d
@@ -155,6 +158,11 @@ def get_performance():
         FROM decisions d
         JOIN outcomes o ON d.market_id = o.market_id
         WHERE o.resolved_yes IS NOT NULL
+          AND d.id = (
+              SELECT id FROM decisions
+              WHERE market_id = d.market_id
+              ORDER BY created_at DESC LIMIT 1
+          )
         """
     ).fetchone()
 
@@ -164,6 +172,11 @@ def get_performance():
         FROM decisions d
         JOIN outcomes o ON d.market_id = o.market_id
         WHERE o.resolved_yes IS NOT NULL
+          AND d.id = (
+              SELECT id FROM decisions
+              WHERE market_id = d.market_id
+              ORDER BY created_at DESC LIMIT 1
+          )
         """
     ).fetchall()
 

@@ -152,6 +152,11 @@ def compute_running_performance(db_path: str | None = None) -> dict:
         FROM decisions d
         JOIN outcomes o ON d.market_id = o.market_id
         WHERE o.resolved_yes IS NOT NULL
+          AND d.id = (
+              SELECT id FROM decisions
+              WHERE market_id = d.market_id
+              ORDER BY created_at DESC LIMIT 1
+          )
         ORDER BY d.created_at
         """
     ).fetchall()

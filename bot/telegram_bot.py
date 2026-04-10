@@ -191,6 +191,11 @@ async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         FROM decisions d
         JOIN outcomes o ON d.market_id = o.market_id
         WHERE o.resolved_yes IS NOT NULL
+          AND d.id = (
+              SELECT id FROM decisions
+              WHERE market_id = d.market_id
+              ORDER BY created_at DESC LIMIT 1
+          )
         """
     ).fetchone()
 
@@ -211,6 +216,11 @@ async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         FROM decisions d
         JOIN outcomes o ON d.market_id = o.market_id
         WHERE o.resolved_yes IS NOT NULL
+          AND d.id = (
+              SELECT id FROM decisions
+              WHERE market_id = d.market_id
+              ORDER BY created_at DESC LIMIT 1
+          )
         """
     ).fetchall()
     conn.close()
@@ -273,7 +283,10 @@ def format_daily_summary(decisions: list[ForecastDecision]) -> str:
     lines.append("*Top 3 picks:*\n")
 
     for i, d in enumerate(top3, 1):
-        edge = d.estimated_probability - d.market_price
+        if d.bet_direction == "YES":
+            edge = d.estimated_probability - d.market_price
+        else:
+            edge = d.market_price - d.estimated_probability
         lines.append(
             f"{i}. `{d.market_id}`\n"
             f"   *{d.market_title[:55]}*\n"

@@ -111,7 +111,7 @@ function Sidebar({
                 {r.n_decisions} mkts · {r.avg_confidence.toFixed(1)}/10 conf
               </div>
             </div>
-            <div className="run-edge">{pct(r.max_edge)}</div>
+            <div className="run-edge">{pct(r.avg_edge)}</div>
           </li>
         ))}
       </ul>
