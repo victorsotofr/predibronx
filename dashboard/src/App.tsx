@@ -16,15 +16,23 @@ function StatusPill({ health }: { health: Health | null }) {
   if (!health)
     return <div className="status-pill error"><span className="status-dot" />API unreachable</div>;
 
+  const archived = health.source === "archive" || health.status === "archive";
   const days = health.last_run
     ? Math.floor((Date.now() - new Date(health.last_run).getTime()) / 86_400_000)
     : null;
   const stale = days !== null && days > 1;
+  const stopped = health.experiment_stopped === true;
 
   return (
-    <div className={`status-pill ${stale ? "stale" : "live"}`}>
-      <span className={`status-dot ${stale ? "" : "pulse"}`} />
-      {stale ? `Stale — last run ${days}d ago` : `Live — last run ${health.last_run}`}
+    <div className={`status-pill ${archived ? "archive" : stopped || stale ? "stale" : "live"}`}>
+      <span className={`status-dot ${archived || stopped || stale ? "" : "pulse"}`} />
+      {archived
+        ? `Archived — last run ${health.last_run ?? "never"}`
+        : stopped
+        ? `Stopped — last run ${health.last_run ?? "never"}`
+        : stale
+          ? `Stale — last run ${days}d ago`
+          : `Live — last run ${health.last_run}`}
     </div>
   );
 }

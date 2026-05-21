@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sqlite3
 from pathlib import Path
 
@@ -13,6 +14,8 @@ DB_PATH = BASE_DIR / "db" / "predibronx.db"
 LOG_PATH = BASE_DIR / "bot.log"
 
 app = FastAPI(title="PrediBronx API", version="1.0.0")
+
+EXPERIMENT_STOPPED = os.environ.get("EXPERIMENT_STOPPED", "true").lower() == "true"
 
 app.add_middleware(
     CORSMiddleware,
@@ -42,7 +45,12 @@ def health():
         conn.close()
         last_run = row["run_date"] if row else None
         n = row["n"] if row else 0
-        return {"status": "ok", "last_run": last_run, "last_run_decisions": n}
+        return {
+            "status": "ok",
+            "last_run": last_run,
+            "last_run_decisions": n,
+            "experiment_stopped": EXPERIMENT_STOPPED,
+        }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 

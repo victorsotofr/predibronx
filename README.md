@@ -42,6 +42,32 @@ The pipeline runs daily at a configurable time (default 08:00 ET). A second job 
 
 ---
 
+## Experiment conclusion
+
+Status: **stopped on 2026-05-19**. The default configuration now keeps the paid prediction pipeline disabled (`EXPERIMENT_STOPPED=true`) and disables automatic resolution checks unless explicitly re-enabled.
+
+The 53-day live experiment did not show a tradable edge. It produced 530 daily decisions across 331 unique markets, with 195 unique markets resolved as of 2026-05-19. The bot's average Brier score was **0.1414**, better than the random 0.25 baseline but worse than the market-price baseline of **0.1091**. Paper return was **-41.1%** since inception.
+
+The main failure mode was not broad randomness; it was overconfident high-edge calls. Predictions with estimated probability >=85% resolved YES only 63.2% of the time and contributed about -61.0 percentage points of P&L. Confidence did not reliably protect the system: confidence 7+ calls had the worst Brier bucket and contributed about -49.7 percentage points. Directionally, YES bets were the weak side, contributing about -83.5 percentage points, while NO bets were positive.
+
+Conclusion: the current architecture is useful as a forecasting/logging benchmark, but not worth continuing as a paid daily pipeline. The market baseline remains stronger, and the single-shot LinkUp + Claude forecast path is too brittle around high-conviction event interpretation. A restart would need a materially different design: multi-source retrieval, market-rule parsing, strict calibration checks, and a sizing rule that rejects extreme edges until they are empirically calibrated.
+
+Operational shutdown steps for the deployed VM:
+
+```bash
+sudo systemctl stop predibronx-bot.service
+sudo systemctl disable predibronx-bot.service
+sudo systemctl restart predibronx-api.service
+```
+
+The Vercel dashboard includes a static archive at `dashboard/public/archive.json`, so the VM can stay stopped while the historical run history, picks, performance metrics, and log tail remain visible. To stop all Google runtime cost, stop the VM:
+
+```bash
+gcloud compute instances stop predibronx-server --project predibronx --zone us-central1-c
+```
+
+---
+
 ## Key design choices
 
 - **Confidence gating** — bets are zeroed when Claude's confidence < 5/10, avoiding low-conviction noise trades (unlike fixed-stake benchmarks)
@@ -106,6 +132,10 @@ LIVE_TRADING=false
 POLYMARKET_API_KEY=
 POLYGON_WALLET_PRIVATE_KEY=
 
+# Optional — experiment kill-switch
+EXPERIMENT_STOPPED=true
+RUN_RESOLUTION_CHECKS=false
+
 # Optional — scheduling
 DAILY_RUN_HOUR=8
 DAILY_RUN_MINUTE=0
@@ -124,6 +154,8 @@ Tunable parameters in `config.py`:
 | `KELLY_FRACTION` | 0.25 | Kelly multiplier (quarter-Kelly) |
 | `TOP_MARKETS` | 10 | Markets evaluated per daily run |
 | `MAX_END_DAYS` | 60 | Only consider markets resolving within this window |
+
+Set `EXPERIMENT_STOPPED=false` to restart scheduled prediction runs. Set `RUN_RESOLUTION_CHECKS=true` only if you want the bot to keep polling Polymarket for newly resolved archived markets.
 
 ---
 
@@ -154,6 +186,8 @@ Both are set to `Restart=always` and `WantedBy=multi-user.target`.
 
 The dashboard is deployed to Vercel from the `dashboard/` subdirectory, with `PREDIBRONX_API_URL=http://<VM_IP>:8080` set as a server-side environment variable.
 
+When the VM API is unreachable, the Vercel API routes and React client fall back to the static archive in `dashboard/public/archive.json`.
+
 ---
 
 ## Dashboard
@@ -164,7 +198,7 @@ Deploy the `dashboard/` directory to Vercel:
 2. Set environment variable: `PREDIBRONX_API_URL=http://<VM_IP>:8080`
 3. Deploy
 
-The dashboard proxies API calls server-side (Vercel → VM) to avoid mixed-content browser issues.
+The dashboard proxies API calls server-side (Vercel → VM) to avoid mixed-content browser issues. If the VM is stopped, the dashboard serves the static archive instead.
 
 ---
 

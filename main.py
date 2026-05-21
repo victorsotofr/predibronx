@@ -38,6 +38,8 @@ def main() -> None:
     """Start PrediBronx: init DB, start scheduler, run Telegram bot."""
     logger.info("PrediBronx starting up...")
     logger.info("Mode: %s", "LIVE" if config.LIVE_TRADING else "PAPER")
+    if config.EXPERIMENT_STOPPED:
+        logger.info("Experiment stopped: no paid prediction pipeline jobs will be scheduled")
     logger.info("DB: %s", config.DB_PATH)
 
     # Initialize database

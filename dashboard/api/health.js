@@ -1,10 +1,17 @@
+import { fetchBackendJson, loadArchive } from "../lib/archive.js";
+
 const API_URL = process.env.PREDIBRONX_API_URL || "http://localhost:8080";
+const EXPERIMENT_STOPPED =
+  (process.env.EXPERIMENT_STOPPED || "true").toLowerCase() === "true";
 
 export default async function handler(req, res) {
   try {
-    const r = await fetch(`${API_URL}/health`);
-    res.status(r.status).json(await r.json());
+    const { status, data } = await fetchBackendJson(`${API_URL}/health`);
+    res.status(status).json({
+      ...data,
+      experiment_stopped: data.experiment_stopped ?? EXPERIMENT_STOPPED,
+    });
   } catch {
-    res.status(502).json({ error: "unreachable" });
+    res.status(200).json(loadArchive().health);
   }
 }

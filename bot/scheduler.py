@@ -27,6 +27,10 @@ logger = logging.getLogger(__name__)
 
 async def run_daily_pipeline(app: Application) -> None:
     """Full daily pipeline: fetch → research → forecast → log → notify."""
+    if config.EXPERIMENT_STOPPED:
+        logger.info("Experiment is stopped, skipping daily pipeline run")
+        return
+
     if is_paused():
         logger.info("Scheduler is paused, skipping daily run")
         return
@@ -84,28 +88,25 @@ def create_scheduler(app: Application) -> AsyncIOScheduler:
     """Create an APScheduler that runs the daily pipeline."""
     scheduler = AsyncIOScheduler()
 
-    trigger = CronTrigger(
-        hour=config.DAILY_RUN_HOUR,
-        minute=config.DAILY_RUN_MINUTE,
-        timezone=config.TIMEZONE,
-    )
+    if not config.EXPERIMENT_STOPPED:
+        trigger = CronTrigger(
+            hour=config.DAILY_RUN_HOUR,
+            minute=config.DAILY_RUN_MINUTE,
+            timezone=config.TIMEZONE,
+        )
 
-    scheduler.add_job(
-        run_daily_pipeline,
-        trigger=trigger,
-        args=[app],
-        id="daily_pipeline",
-        name="Daily prediction pipeline",
-        replace_existing=True,
-    )
+        scheduler.add_job(
+            run_daily_pipeline,
+            trigger=trigger,
+            args=[app],
+            id="daily_pipeline",
+            name="Daily prediction pipeline",
+            replace_existing=True,
+        )
+    else:
+        logger.info("Experiment stopped: daily prediction pipeline is disabled")
 
     # Resolution check — runs daily at 09:00 ET (1h after main pipeline)
-    resolution_trigger = CronTrigger(
-        hour=9,
-        minute=0,
-        timezone=config.TIMEZONE,
-    )
-
     async def _run_resolution_check() -> None:
         """Wrapper to run resolution check and notify via Telegram."""
         newly_scored = await check_and_score_resolved_markets()
@@ -116,27 +117,59 @@ def create_scheduler(app: Application) -> AsyncIOScheduler:
                      f" Use /performance to see updated stats.",
             )
 
-    scheduler.add_job(
-        _run_resolution_check,
-        trigger=resolution_trigger,
-        id="resolution_check",
-        name="Daily resolution check",
-        replace_existing=True,
-    )
+    if config.RUN_RESOLUTION_CHECKS:
+        resolution_trigger = CronTrigger(
+            hour=9,
+            minute=0,
+            timezone=config.TIMEZONE,
+        )
 
+        scheduler.add_job(
+            _run_resolution_check,
+            trigger=resolution_trigger,
+            id="resolution_check",
+            name="Daily resolution check",
+            replace_existing=True,
+        )
+    else:
+        logger.info("Resolution checks are disabled")
+
+    pipeline_status = (
+        "disabled"
+        if config.EXPERIMENT_STOPPED
+        else f"{config.DAILY_RUN_HOUR:02d}:{config.DAILY_RUN_MINUTE:02d}"
+    )
+    resolution_status = (
+        "enabled at 09:00" if config.RUN_RESOLUTION_CHECKS else "disabled"
+    )
     logger.info(
-        "Scheduler configured: pipeline at %02d:%02d, resolution check at 09:00 %s",
-        config.DAILY_RUN_HOUR,
-        config.DAILY_RUN_MINUTE,
+        "Scheduler configured: pipeline %s, resolution check %s (%s)",
+        pipeline_status,
+        resolution_status,
         config.TIMEZONE,
     )
     return scheduler
 
 
+def scheduler_status_message() -> str:
+    """Human-readable status for CLI diagnostics."""
+    pipeline_status = (
+        "disabled"
+        if config.EXPERIMENT_STOPPED
+        else f"at {config.DAILY_RUN_HOUR:02d}:{config.DAILY_RUN_MINUTE:02d}"
+    )
+    return (
+        "Experiment stopped; scheduled prediction and resolution jobs are disabled."
+        if config.EXPERIMENT_STOPPED and not config.RUN_RESOLUTION_CHECKS
+        else (
+            f"Pipeline {pipeline_status}; "
+            f"resolution checks {'enabled' if config.RUN_RESOLUTION_CHECKS else 'disabled'} "
+            f"({config.TIMEZONE})."
+        )
+    )
+
+
 if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
-    print(
-        f"Scheduler would run daily at {config.DAILY_RUN_HOUR:02d}:{config.DAILY_RUN_MINUTE:02d} "
-        f"{config.TIMEZONE}"
-    )
+    print(scheduler_status_message())
     print("Run main.py to start the full system.")

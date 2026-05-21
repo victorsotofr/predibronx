@@ -21,6 +21,7 @@ POLYGON_WALLET_PRIVATE_KEY: str = os.environ.get("POLYGON_WALLET_PRIVATE_KEY", "
 
 # ── Trading Mode ─────────────────────────────────────────────────────────────
 LIVE_TRADING: bool = os.environ.get("LIVE_TRADING", "false").lower() == "true"
+EXPERIMENT_STOPPED: bool = os.environ.get("EXPERIMENT_STOPPED", "true").lower() == "true"
 
 # ── Risk Limits ──────────────────────────────────────────────────────────────
 MAX_BET_FRACTION: float = 0.10  # Max fraction of per-market budget on a single bet
@@ -36,6 +37,13 @@ EXCLUDED_CATEGORIES: set[str] = {"Crypto", "Cryptocurrency", "Bitcoin", "Ethereu
 DAILY_RUN_HOUR: int = int(os.environ.get("DAILY_RUN_HOUR", "8"))
 DAILY_RUN_MINUTE: int = int(os.environ.get("DAILY_RUN_MINUTE", "0"))
 TIMEZONE: str = os.environ.get("TIMEZONE", "America/New_York")
+RUN_RESOLUTION_CHECKS: bool = (
+    os.environ.get(
+        "RUN_RESOLUTION_CHECKS",
+        "false" if EXPERIMENT_STOPPED else "true",
+    ).lower()
+    == "true"
+)
 
 # ── Claude Model ─────────────────────────────────────────────────────────────
 CLAUDE_MODEL: str = "claude-sonnet-4-6"
