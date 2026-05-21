@@ -1,8 +1,40 @@
 # PrediBronx
 
-A personal AI-powered prediction trading bot for [Polymarket](https://polymarket.com).
+A personal AI forecasting experiment on [Polymarket](https://polymarket.com).
 
-PrediBronx runs a fully automated daily pipeline: it selects markets, researches them with live web data, generates calibrated probability estimates using Claude, sizes bets with the Kelly criterion, and delivers results to a Telegram bot — with a live web dashboard and optional execution on the Polymarket CLOB.
+PrediBronx tested whether a simple autonomous AI system could find an edge in prediction markets by selecting active Polymarket questions, researching them with live web search, asking Claude for calibrated probabilities, and logging paper bets against the market price.
+
+## Experiment result: no tradable edge
+
+The paper experiment ran for **53 days**, from **2026-03-14** to **2026-05-19**. It logged **530 paper decisions** across **331 unique markets**, with **195 resolved markets** scored as of **2026-05-19**.
+
+| Metric | PrediBronx | Baseline |
+|---|---:|---:|
+| Average Brier score | **0.1414** | Market price: **0.1091** |
+| Random Brier baseline | **0.2500** | Always predict 50% |
+| Paper return | **-41.1%** | Since inception |
+
+The result was clear: PrediBronx was better than random, but worse than simply using the market price. It did not show a tradable edge.
+
+The main failure mode was not broad randomness. It was **overconfident disagreement with the market**, especially on high-edge YES calls. Predictions with estimated probability >=85% resolved YES only 63.2% of the time and contributed about -61.0 percentage points of P&L. Confidence did not reliably protect the system: confidence 7+ calls had the worst Brier bucket and contributed about -49.7 percentage points. Directionally, YES bets were the weak side, while NO bets were positive.
+
+## Interpretation: the market was the baseline to beat
+
+Prediction markets are not just data sources; they are information aggregation mechanisms. Polymarket's [prices and order books](https://docs.polymarket.com/concepts/prices-orderbook) come from peer-to-peer supply and demand in a CLOB, and the displayed price is intended to represent the market's probability estimate. Classic prediction-market research makes the same point more generally: prices can compress dispersed beliefs and information into a forecast, while also requiring care because prices are not perfect truth and can be distorted by liquidity, incentives, risk preferences, and market design ([Wolfers and Zitzewitz](https://www.aeaweb.org/articles?id=10.1257%2F0895330041371321), [Manski](https://www.nber.org/papers/w10359)).
+
+That matters for an AI bot. If the information LinkUp retrieves is public and already salient to traders, then search may improve the explanation without creating new edge. In many markets, PrediBronx was probably rediscovering information already embedded in the price, then occasionally adding brittle interpretation on top. The hard problem was not "can the model find relevant facts?" It was "can the model add incremental information, better calibration, or faster interpretation than the market?"
+
+My takeaway: the market price is the first model to beat. A future version would need a real source of advantage: deeper multi-source retrieval, better parsing of market resolution rules, faster reaction to new information, calibrated rejection of extreme edges, or empirical evidence that a specific class of markets is systematically mispriced.
+
+## Paper mode, not market making
+
+PrediBronx did **not** execute live trades, post quotes, or provide liquidity on the Polymarket CLOB. It was a paper forecaster: it observed the market price, generated a probability estimate, sized a hypothetical bet with quarter-Kelly, logged the decision, and scored it after resolution.
+
+That makes the negative result stronger. The reported -41.1% return is before real execution frictions such as spread, slippage, order-fill uncertainty, liquidity constraints, and operational risk. The strategy failed before it had to survive live trading.
+
+## What PrediBronx does
+
+PrediBronx runs a fully automated daily pipeline: it selects markets, researches them with live web data, generates calibrated probability estimates using Claude, sizes hypothetical bets with the Kelly criterion, and delivers results to a Telegram bot and web dashboard.
 
 Inspired by [PrediBench](https://github.com/PresageLabs/PrediBench), an open-source benchmark that measures LLM forecasting ability on real-world prediction markets.
 
@@ -26,10 +58,10 @@ Polymarket Gamma API
    Bet Sizer            ← Quarter-Kelly criterion, confidence-gated (no bet if conf < 5/10)
         │
         ▼
-   Executor / DB        ← SQLite log + paper/live execution
+   Executor / DB        ← SQLite log + paper decision record
         │
         ▼
-  Telegram Bot          ← daily summary, per-trade approvals, /performance
+  Telegram Bot          ← daily summary, explanations, /performance
         │
         ▼
  Dashboard (Vercel)     ← live UI: picks, P&L per bet, Brier scores
@@ -42,15 +74,9 @@ The pipeline runs daily at a configurable time (default 08:00 ET). A second job 
 
 ---
 
-## Experiment conclusion
+## Operational status
 
-Status: **stopped on 2026-05-19**. The default configuration now keeps the paid prediction pipeline disabled (`EXPERIMENT_STOPPED=true`) and disables automatic resolution checks unless explicitly re-enabled.
-
-The 53-day live experiment did not show a tradable edge. It produced 530 daily decisions across 331 unique markets, with 195 unique markets resolved as of 2026-05-19. The bot's average Brier score was **0.1414**, better than the random 0.25 baseline but worse than the market-price baseline of **0.1091**. Paper return was **-41.1%** since inception.
-
-The main failure mode was not broad randomness; it was overconfident high-edge calls. Predictions with estimated probability >=85% resolved YES only 63.2% of the time and contributed about -61.0 percentage points of P&L. Confidence did not reliably protect the system: confidence 7+ calls had the worst Brier bucket and contributed about -49.7 percentage points. Directionally, YES bets were the weak side, contributing about -83.5 percentage points, while NO bets were positive.
-
-Conclusion: the current architecture is useful as a forecasting/logging benchmark, but not worth continuing as a paid daily pipeline. The market baseline remains stronger, and the single-shot LinkUp + Claude forecast path is too brittle around high-conviction event interpretation. A restart would need a materially different design: multi-source retrieval, market-rule parsing, strict calibration checks, and a sizing rule that rejects extreme edges until they are empirically calibrated.
+Status: **stopped on 2026-05-19**. The default configuration now keeps the prediction pipeline disabled (`EXPERIMENT_STOPPED=true`) and disables automatic resolution checks unless explicitly re-enabled.
 
 Operational shutdown steps for the deployed VM:
 
@@ -77,7 +103,7 @@ gcloud compute instances stop predibronx-server --project predibronx --zone us-c
 
 ### What PrediBench taught us
 
-PrediBench's most actionable finding: **research depth drives performance**. Models that visited more webpages (Perplexity Sonar Deep Research: 16+ pages) significantly outperformed models that only read search snippets. PrediBronx currently uses a single LinkUp search per market — the main lever for improvement is moving toward multi-step agentic research (search → fetch → synthesize multiple sources).
+PrediBench's most actionable finding: **research depth drives performance**. Models that visited more webpages (Perplexity Sonar Deep Research: 16+ pages) significantly outperformed models that only read search snippets. PrediBronx used a single LinkUp search per market; if a future version tries to beat market prices, deeper research is necessary but not sufficient. It also needs evidence that the research adds information not already reflected in the price.
 
 ---
 
@@ -102,7 +128,7 @@ PrediBench's most actionable finding: **research depth drives performance**. Mod
 - A [Telegram bot token](https://core.telegram.org/bots#botfather) and chat ID
 - An [Anthropic API key](https://console.anthropic.com/)
 - A [LinkUp API key](https://linkup.so/)
-- *(Live mode only)* Polymarket API key and a Polygon wallet private key
+- *(Future live execution only)* Polymarket API key and a Polygon wallet private key
 
 ---
 
@@ -127,7 +153,7 @@ LINKUP_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 
-# Optional — live trading (defaults to paper mode)
+# Optional — live trading flag (execution is not implemented; defaults to paper mode)
 LIVE_TRADING=false
 POLYMARKET_API_KEY=
 POLYGON_WALLET_PRIVATE_KEY=
@@ -178,7 +204,7 @@ The SQLite database is created automatically at `db/predibronx.db`.
 The bot runs as two systemd services on a GCP e2-micro VM:
 
 ```
-predibronx-bot.service   ← main pipeline + Telegram polling
+predibronx-bot.service   ← paper forecasting pipeline + Telegram polling
 predibronx-api.service   ← FastAPI dashboard API on :8080
 ```
 
@@ -214,7 +240,7 @@ The dashboard proxies API calls server-side (Vercel → VM) to avoid mixed-conte
 | `/pause` | Pause the daily scheduler |
 | `/resume` | Resume the daily scheduler |
 
-In live mode, each trade triggers an inline approval button before execution.
+Live CLOB execution was planned as a future phase but was not implemented during this experiment.
 
 ---
 
@@ -228,7 +254,7 @@ predibronx/
 │   ├── market_selector.py # Polymarket Gamma API wrapper + filtering
 │   ├── researcher.py      # LinkUp deep search + resolution-source extraction
 │   ├── forecaster.py      # Claude superforecaster + Kelly sizing
-│   ├── executor.py        # SQLite persistence + CLOB execution
+│   ├── executor.py        # SQLite persistence + paper decision logging
 │   └── evaluator.py       # Brier scoring + return calculation
 ├── bot/
 │   ├── telegram_bot.py    # Command handlers + approval flow
@@ -254,4 +280,4 @@ Following [PrediBench](https://github.com/PresageLabs/PrediBench) methodology:
 
 ## Disclaimer
 
-This project is experimental and for personal use. Past prediction performance does not guarantee future results. Use paper mode until you have validated the system's edge. Never risk capital you cannot afford to lose.
+This project is experimental and for personal use. Past prediction performance does not guarantee future results. PrediBronx did not validate a market edge; do not risk capital without independent validation.
