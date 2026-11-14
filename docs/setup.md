@@ -164,7 +164,7 @@ uv run python main.py
 uv run python main.py --run-now
 ```
 
-The SQLite database is created automatically at `db/predibronx.db`.
+The SQLite database is created automatically at `db/predibronx.db` and is kept out of version control. Historical public results are preserved in `dashboard/public/archive.json`; local agent memory and reference checkouts are also excluded.
 
 ---
 
@@ -188,6 +188,8 @@ When the VM API is unreachable, the Vercel API routes and React client fall back
 ## Dashboard
 
 The archived dashboard can run without a VM or provider keys. Its Vercel routes and client fall back to `dashboard/public/archive.json` when the API is unavailable; omit `PREDIBRONX_API_URL` for archive-only use.
+
+For a local archive preview, run `npm ci` and `npm run dev` inside `dashboard/`. Run `npx tsc --noEmit` and `npm run build` to check the dashboard. The committed npm lockfile pins its dependencies.
 
 Deploy the `dashboard/` directory to Vercel:
 

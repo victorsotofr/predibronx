@@ -26,3 +26,7 @@ dashboard/.vercel/
 
 # Reference repos (not part of this project)
 reference_repos/
+
+# Local agent history and macOS metadata
+.claude/projects/
+.DS_Store
