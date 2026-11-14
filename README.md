@@ -2,17 +2,21 @@
 
 A personal AI forecasting experiment on [Polymarket](https://polymarket.com).
 
+**Status: stopped on May 19, 2026.** The dashboard can serve a static archive without the forecasting VM. Scheduled predictions and resolution checks are disabled by default.
+
 PrediBronx tested whether a simple autonomous AI system could find an edge in prediction markets by selecting active Polymarket questions, researching them with live web search, asking Claude for calibrated probabilities, and logging paper bets against the market price.
 
 ## Experiment result: no tradable edge
 
-The paper experiment ran for **53 days**, from **2026-03-14** to **2026-05-19**. It logged **530 paper decisions** across **331 unique markets**, with **195 resolved markets** scored as of **2026-05-19**.
+The paper experiment recorded **53 daily runs** between **2026-03-14** and **2026-05-19**. It logged **530 paper decisions** across **331 unique markets**. The archive contains **234 decisions with known outcomes**, covering **195 distinct resolved markets**. Aggregate results below use the latest decision for each resolved market, as of **2026-05-19**.
 
 | Metric | PrediBronx | Baseline |
 |---|---:|---:|
 | Average Brier score | **0.1414** | Market price: **0.1091** |
 | Random Brier baseline | **0.2500** | Always predict 50% |
-| Paper return | **-41.1%** | Since inception |
+| Sum of stake-weighted paper returns | **-41.1%** | Latest decision per resolved market |
+
+The return metric sums stake-weighted returns across the 195 latest resolved-market decisions; it is not a compounded portfolio equity curve. The figures can be reproduced from `dashboard/public/archive.json`, selecting the latest `run_date` per market, using the calculations in `agent/evaluator.py`.
 
 The result was clear: PrediBronx was better than random, but worse than simply using the market price. It did not show a tradable edge.
 
@@ -34,7 +38,7 @@ That makes the negative result stronger. The reported -41.1% return is before re
 
 ## What PrediBronx does
 
-PrediBronx runs a fully automated daily pipeline: it selects markets, researches them with live web data, generates calibrated probability estimates using Claude, sizes hypothetical bets with the Kelly criterion, and delivers results to a Telegram bot and web dashboard.
+During the experiment, PrediBronx ran a daily pipeline: selecting markets, researching them with live web data, estimating probabilities with Claude, sizing hypothetical bets with quarter-Kelly, and delivering results to Telegram and a web dashboard.
 
 Inspired by [PrediBench](https://github.com/PresageLabs/PrediBench), an open-source benchmark that measures LLM forecasting ability on real-world prediction markets.
 
@@ -70,7 +74,7 @@ Polymarket Gamma API
    Evaluator            ← Brier scores & returns once markets resolve
 ```
 
-The pipeline runs daily at a configurable time (default 08:00 ET). A second job checks Polymarket for newly resolved markets and scores them automatically.
+When explicitly enabled, the pipeline is scheduled at a configurable time (default 08:00 ET). A separate, opt-in resolution job checks Polymarket for newly resolved markets. Both are disabled in the default stopped configuration.
 
 ---
 
@@ -86,7 +90,7 @@ sudo systemctl disable predibronx-bot.service
 sudo systemctl restart predibronx-api.service
 ```
 
-The Vercel dashboard includes a static archive at `dashboard/public/archive.json`, so the VM can stay stopped while the historical run history, picks, performance metrics, and log tail remain visible. To stop all Google runtime cost, stop the VM:
+The Vercel dashboard includes a static archive at `dashboard/public/archive.json`, so the VM can stay stopped while the historical run history, picks, performance metrics, and log tail remain visible. Historical VM stop command (requires owner approval before execution; stopping a VM does not remove storage or other billable resources):
 
 ```bash
 gcloud compute instances stop predibronx-server --project predibronx --zone us-central1-c
@@ -97,7 +101,7 @@ gcloud compute instances stop predibronx-server --project predibronx --zone us-c
 ## Key design choices
 
 - **Confidence gating** — bets are zeroed when Claude's confidence < 5/10, avoiding low-conviction noise trades (unlike fixed-stake benchmarks)
-- **Resolution-source verification** — Claude is explicitly instructed to verify predictions against the market's official data source (BLS, FIFA, AP News, etc.) and reduce confidence if it cannot; this prevents acting on media misreporting
+- **Resolution-source verification** — Claude is explicitly instructed to verify predictions against the market's official data source (BLS, FIFA, AP News, etc.) and reduce confidence if it cannot; this asks the model to check sources, but does not guarantee accurate interpretation
 - **Quarter-Kelly sizing** — bet fractions are computed from the Kelly criterion and multiplied by 0.25 for conservatism, capped at 10% per market
 - **Brier scoring** — every resolved market is scored against a random baseline (always predict 0.5) and a market-price baseline; this follows the methodology from PrediBench
 
@@ -128,14 +132,13 @@ PrediBench's most actionable finding: **research depth drives performance**. Mod
 - A [Telegram bot token](https://core.telegram.org/bots#botfather) and chat ID
 - An [Anthropic API key](https://console.anthropic.com/)
 - A [LinkUp API key](https://linkup.so/)
-- *(Future live execution only)* Polymarket API key and a Polygon wallet private key
 
 ---
 
 ## Installation
 
 ```bash
-git clone <your-repo>
+git clone https://github.com/victorsotofr/predibronx.git
 cd predibronx
 uv sync
 ```
@@ -153,10 +156,8 @@ LINKUP_API_KEY=...
 TELEGRAM_BOT_TOKEN=...
 TELEGRAM_CHAT_ID=...
 
-# Optional — live trading flag (execution is not implemented; defaults to paper mode)
+# Keep paper mode: live execution is not implemented
 LIVE_TRADING=false
-POLYMARKET_API_KEY=
-POLYGON_WALLET_PRIVATE_KEY=
 
 # Optional — experiment kill-switch
 EXPERIMENT_STOPPED=true
@@ -176,7 +177,7 @@ Tunable parameters in `config.py`:
 | Parameter | Default | Description |
 |---|---|---|
 | `MAX_BET_FRACTION` | 0.10 | Max stake per market (fraction of budget) |
-| `DAILY_LOSS_LIMIT` | 0.02 | Daily drawdown limit before pausing |
+| `DAILY_LOSS_LIMIT` | 0.02 | Configuration value only; no automatic loss-limit enforcement |
 | `KELLY_FRACTION` | 0.25 | Kelly multiplier (quarter-Kelly) |
 | `TOP_MARKETS` | 10 | Markets evaluated per daily run |
 | `MAX_END_DAYS` | 60 | Only consider markets resolving within this window |
@@ -199,16 +200,16 @@ The SQLite database is created automatically at `db/predibronx.db`.
 
 ---
 
-## GCP deployment (production)
+## Historical GCP deployment
 
-The bot runs as two systemd services on a GCP e2-micro VM:
+The deployment used two systemd services on a GCP e2-micro VM:
 
 ```
 predibronx-bot.service   ← paper forecasting pipeline + Telegram polling
 predibronx-api.service   ← FastAPI dashboard API on :8080
 ```
 
-Both are set to `Restart=always` and `WantedBy=multi-user.target`.
+The service definitions use `Restart=always` and `WantedBy=multi-user.target`; this describes their configuration, not the current VM state.
 
 The dashboard is deployed to Vercel from the `dashboard/` subdirectory, with `PREDIBRONX_API_URL=http://<VM_IP>:8080` set as a server-side environment variable.
 
@@ -218,10 +219,12 @@ When the VM API is unreachable, the Vercel API routes and React client fall back
 
 ## Dashboard
 
+The archived dashboard can run without a VM or provider keys. Its Vercel routes and client fall back to `dashboard/public/archive.json` when the API is unavailable; omit `PREDIBRONX_API_URL` for archive-only use.
+
 Deploy the `dashboard/` directory to Vercel:
 
 1. New Project → import repo → set **Root Directory** to `dashboard`
-2. Set environment variable: `PREDIBRONX_API_URL=http://<VM_IP>:8080`
+2. For an explicitly operated live API only, set `PREDIBRONX_API_URL=http://<VM_IP>:8080`; otherwise omit it to use the archive.
 3. Deploy
 
 The dashboard proxies API calls server-side (Vercel → VM) to avoid mixed-content browser issues. If the VM is stopped, the dashboard serves the static archive instead.
@@ -273,7 +276,7 @@ predibronx/
 Following [PrediBench](https://github.com/PresageLabs/PrediBench) methodology:
 
 - **Brier score** — mean squared error between estimated probability and binary outcome; lower is better; baselines: random (always 0.5) and market price
-- **Cumulative return** — paper P&L computed from bet direction, fraction, and market price at decision time
+- **Paper return sum** — sum of stake-weighted hypothetical returns from the latest decision per resolved market; not compounded portfolio performance
 - **Win rate** — fraction of resolved bets where direction was correct
 
 ---
