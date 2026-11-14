@@ -31,4 +31,3 @@ My takeaway: the market price is the first model to beat. A future version would
 PrediBronx did **not** execute live trades, post quotes, or provide liquidity on the Polymarket CLOB. It was a paper forecaster: it observed the market price, generated a probability estimate, sized a hypothetical bet with quarter-Kelly, logged the decision, and scored it after resolution.
 
 That makes the negative result stronger. The reported -41.1% return is before real execution frictions such as spread, slippage, order-fill uncertainty, liquidity constraints, and operational risk. The strategy failed before it had to survive live trading.
-
