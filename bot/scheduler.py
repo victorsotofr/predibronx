@@ -38,7 +38,6 @@ async def run_daily_pipeline(app: Application) -> None:
     logger.info("Starting daily pipeline run")
 
     try:
-        # 1. Fetch markets
         logger.info("Step 1/4: Fetching top markets...")
         markets = await fetch_top_markets()
         if not markets:
@@ -50,19 +49,15 @@ async def run_daily_pipeline(app: Application) -> None:
             return
         log_markets(markets)
 
-        # 2. Research
         logger.info("Step 2/4: Researching %d markets...", len(markets))
         research = await research_markets(markets)
 
-        # 3. Forecast
         logger.info("Step 3/4: Forecasting...")
         decisions = await forecast_all(markets, research)
 
-        # 4. Log & execute
         logger.info("Step 4/4: Logging decisions...")
         summaries = execute_decisions(decisions)
 
-        # 5. Notify via Telegram
         await send_summary(app, decisions)
 
         # In live mode, send per-trade approval requests

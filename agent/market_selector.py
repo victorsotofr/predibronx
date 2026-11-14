@@ -142,13 +142,11 @@ async def fetch_top_markets(
                     continue
                 if end > cutoff or end < date.today():
                     continue
-                # Filter: not crypto
                 if _is_crypto(m):
                     continue
                 # Filter: near-resolved markets (price too extreme)
                 if m.yes_price < 0.03 or m.yes_price > 0.97:
                     continue
-                # Filter: expiring too soon (< 3 days)
                 days_left = (end - date.today()).days
                 if days_left < 3:
                     continue
@@ -159,7 +157,6 @@ async def fetch_top_markets(
                 break
             offset += limit
 
-    # Sort by volume descending, take top N
     all_markets.sort(key=lambda m: m.volume, reverse=True)
     selected = all_markets[:top_n]
     logger.info("Selected %d markets from %d candidates", len(selected), len(all_markets))

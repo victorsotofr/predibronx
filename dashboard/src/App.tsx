@@ -10,8 +10,6 @@ const pct = (v: number, decimals = 1) =>
 const signedPct = (v: number, decimals = 1) =>
   `${v >= 0 ? "+" : ""}${(v * 100).toFixed(decimals)}%`;
 
-// ── StatusPill ────────────────────────────────────────────────────────────
-
 function StatusPill({ health }: { health: Health | null }) {
   if (!health)
     return <div className="status-pill error"><span className="status-dot" />API unreachable</div>;
@@ -36,8 +34,6 @@ function StatusPill({ health }: { health: Health | null }) {
     </div>
   );
 }
-
-// ── StatsBar ──────────────────────────────────────────────────────────────
 
 function StatsBar({ data }: { data: Performance | null }) {
   if (!data) return <div className="stats-bar" />;
@@ -87,8 +83,6 @@ function StatsBar({ data }: { data: Performance | null }) {
   );
 }
 
-// ── Sidebar ───────────────────────────────────────────────────────────────
-
 function Sidebar({
   runs,
   selected,
@@ -126,8 +120,6 @@ function Sidebar({
     </aside>
   );
 }
-
-// ── Decision row ──────────────────────────────────────────────────────────
 
 function DecisionRow({ d, i }: { d: Decision; i: number }) {
   const [open, setOpen] = useState(false);
@@ -195,8 +187,6 @@ function DecisionRow({ d, i }: { d: Decision; i: number }) {
   );
 }
 
-// ── Decisions table ───────────────────────────────────────────────────────
-
 function DecisionsTab({ decisions }: { decisions: Decision[] }) {
   if (decisions.length === 0)
     return <div className="empty">No decisions for this run</div>;
@@ -243,8 +233,6 @@ function DecisionsTab({ decisions }: { decisions: Decision[] }) {
   );
 }
 
-// ── Logs tab ──────────────────────────────────────────────────────────────
-
 function LogsTab({ logs }: { logs: Logs | null }) {
   // Filter out noisy HTTP polling lines
   const lines = (logs?.lines ?? []).filter(
@@ -258,8 +246,6 @@ function LogsTab({ logs }: { logs: Logs | null }) {
     </div>
   );
 }
-
-// ── App ───────────────────────────────────────────────────────────────────
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -293,7 +279,6 @@ export default function App() {
 
   return (
     <div className="app">
-      {/* Header */}
       <header className="header">
         <div>
           <span className="brand">PrediBronx</span>
@@ -302,15 +287,11 @@ export default function App() {
         <StatusPill health={health} />
       </header>
 
-      {/* Stats bar */}
       <StatsBar data={performance} />
 
-      {/* Body */}
       <div className="body">
-        {/* Sidebar: run history */}
         <Sidebar runs={runs} selected={selectedRun} onSelect={setSelectedRun} />
 
-        {/* Main content */}
         <div className="content">
           <div className="content-header">
             <div>

@@ -92,14 +92,11 @@ def _kelly_bet_fraction(estimated_prob: float, market_price: float) -> tuple[str
 
     Returns (direction, fraction) where fraction is capped by MAX_BET_FRACTION.
     """
-    # Determine if we bet YES or NO
     if estimated_prob > market_price:
-        # Edge on YES side
         direction = "YES"
         p = estimated_prob
         odds = (1.0 / market_price) - 1.0  # Decimal odds - 1
     elif estimated_prob < market_price:
-        # Edge on NO side
         direction = "NO"
         p = 1.0 - estimated_prob
         odds = (1.0 / (1.0 - market_price)) - 1.0

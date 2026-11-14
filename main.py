@@ -42,18 +42,14 @@ def main() -> None:
         logger.info("Experiment stopped: no paid prediction pipeline jobs will be scheduled")
     logger.info("DB: %s", config.DB_PATH)
 
-    # Initialize database
     conn = _init_db()
     conn.close()
     logger.info("Database initialized")
 
-    # Build Telegram app
     app = build_app()
 
-    # Create scheduler
     scheduler = create_scheduler(app)
 
-    # Handle --run-now flag for immediate pipeline execution
     run_now = "--run-now" in sys.argv
 
     async def post_init(application) -> None:

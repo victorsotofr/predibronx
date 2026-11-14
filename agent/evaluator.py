@@ -104,7 +104,6 @@ def evaluate_resolved_market(
         resolved_yes,
     )
 
-    # Store outcome
     conn.execute(
         """
         INSERT OR REPLACE INTO outcomes (market_id, resolved_yes, resolved_at)
@@ -265,7 +264,6 @@ async def check_and_score_resolved_markets(db_path: str | None = None) -> int:
                         )
                     continue
 
-                # Find the winning outcome (price == 1.0)
                 winning_idx = next((i for i, p in enumerate(prices) if p == 1.0), None)
                 if winning_idx is None or winning_idx >= len(outcomes):
                     logger.warning(

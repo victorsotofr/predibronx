@@ -180,7 +180,6 @@ async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     conn = sqlite3.connect(str(config.DB_PATH))
     conn.row_factory = sqlite3.Row
 
-    # Count scored predictions
     row = conn.execute(
         """
         SELECT COUNT(*) as n,
@@ -209,7 +208,6 @@ async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
     avg_market_brier = row["avg_market_brier"]
     random_baseline = 0.25  # Brier score of always predicting 0.5
 
-    # Compute cumulative return
     returns_row = conn.execute(
         """
         SELECT d.bet_direction, d.bet_fraction, d.market_price, o.resolved_yes
@@ -234,7 +232,6 @@ async def cmd_performance(update: Update, context: ContextTypes.DEFAULT_TYPE) ->
         if fraction > 0 and 0 < price < 1:
             cumulative_return += fraction * ((1.0 - price) / price) if won else -fraction
 
-    # Verdict
     if avg_brier < avg_market_brier:
         verdict = "✅ Beating the market"
     elif avg_brier < random_baseline:
@@ -275,7 +272,6 @@ def format_daily_summary(decisions: list[ForecastDecision]) -> str:
     if not decisions:
         return "Daily run complete — no viable markets found."
 
-    # Sort by absolute edge
     ranked = sorted(decisions, key=lambda d: abs(d.estimated_probability - d.market_price), reverse=True)
     top3 = ranked[:3]
 
